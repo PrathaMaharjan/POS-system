@@ -10,6 +10,22 @@ const STATUS_STYLES = {
   PENDING:   { label: 'Pending',   dot: 'bg-[#e5b83b]', text: 'text-[#e5b83b]', bg: 'bg-[#e5b83b]/10 border-[#e5b83b]/20' },
 };
 
+const getPaymentBadge = (method) => {
+  const cleanMethod = method?.toUpperCase() || 'UNPAID';
+  
+  switch (cleanMethod) {
+    case 'CASH':
+      return { label: 'Cash Payment', color: 'text-neutral-300 bg-neutral-900/50 border border-neutral-800 px-2 py-0.5 rounded-md text-[11px]' };
+    case 'CARD':
+      return { label: 'Card Payment', color: 'text-neutral-300 bg-neutral-900/50 border border-neutral-800 px-2 py-0.5 rounded-md text-[11px]' };
+    case 'FONEPAY':
+    case 'QR':
+      return { label: 'QR Payment', color: 'text-neutral-300 bg-[#e5b83b]/10 border border-[#e5b83b]/20 px-2 py-0.5 rounded-md text-[11px]' };
+    default:
+      return { label: 'Unpaid Shift', color: 'text-neutral-500 bg-neutral-900/20 border border-neutral-900 px-2 py-0.5 rounded-md text-[11px] font-semibold' };
+  }
+};
+
 function formatTime(iso) {
   if (!iso) return '--:--';
   return new Date(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
@@ -28,7 +44,6 @@ export default function History() {
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [expandedId, setExpandedId] = useState(null);
 
-  // ── Pagination States ──────────────────────────────────────────────────────
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
@@ -51,10 +66,41 @@ export default function History() {
       });
   }, []);
 
-  // Reset page position to 1 when filters or query parameters change
   useEffect(() => {
     setCurrentPage(1);
   }, [search, statusFilter, itemsPerPage]);
+
+
+  const handleDeleteOrder = async (e, orderId) => {
+  e.stopPropagation(); 
+  
+  if (!window.confirm("Are you sure you want to permanently delete this order record?")) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/orders?id=${orderId}`, {
+      method: 'DELETE',
+    });
+
+    if (response.ok) {
+   
+      setOrders(prevOrders => prevOrders.filter(order => order.id !== orderId));
+      if (expandedId === orderId) setExpandedId(null);
+    } else {
+
+      try {
+        const errData = await response.json();
+        alert(errData.error || "Failed to delete order. Please try again.");
+      } catch {
+        alert(`Failed to delete order. Server returned status: ${response.status}`);
+      }
+    }
+  } catch (err) {
+    console.error("Critical error during deletion:", err);
+    alert("Network error. Could not delete order.");
+  }
+};
 
   const filtered = useMemo(() => {
     return orders.filter(o => {
@@ -71,7 +117,6 @@ export default function History() {
     });
   }, [orders, search, statusFilter]);
 
-  // Compute sliced view window metrics based on current page configurations
   const paginatedOrders = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
     return filtered.slice(startIndex, startIndex + itemsPerPage);
@@ -79,7 +124,6 @@ export default function History() {
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / itemsPerPage));
 
-  // Updated to show Pending metric totals instead of Cancelled
   const stats = useMemo(() => {
     const completedOrders = orders.filter(o => o.status?.toUpperCase() === 'COMPLETED');
     const pendingOrders = orders.filter(o => o.status?.toUpperCase() === 'PENDING');
@@ -122,7 +166,7 @@ export default function History() {
           </button>
         </div>
 
-        {/* Stats row - Cancelled changed to Pending */}
+        {/* Stats row */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
             { label: 'Total Orders', value: stats.total, color: 'text-white' },
@@ -173,19 +217,7 @@ export default function History() {
             </div>
           </div>
 
-          {/* Items Per Page Picker Selector */}
-          <div className="flex items-center gap-2 text-xs text-neutral-500 font-medium">
-            <span>Show</span>
-            <select
-              value={itemsPerPage}
-              onChange={(e) => setItemsPerPage(Number(e.target.value))}
-              className="bg-[#141416] border border-neutral-800 text-neutral-300 rounded-lg px-2 py-1.5 outline-none focus:border-[#e5b83b]/60"
-            >
-              {[5, 10, 20, 50].map(size => (
-                <option key={size} value={size}>{size} orders</option>
-              ))}
-            </select>
-          </div>
+         
         </div>
 
         {/* Orders list */}
@@ -202,11 +234,14 @@ export default function History() {
             const s = STATUS_STYLES[currentStatus] || STATUS_STYLES.PENDING;
             const isExpanded = expandedId === order.id;
             const orderItems = order.items || [];
+            
+            // Dynamic payment configuration context
+            const paymentBadge = getPaymentBadge(order.paymentMethod);
 
             return (
               <div
                 key={order.id}
-                className="bg-[#141416] border border-neutral-800 rounded-2xl overflow-hidden transition-all duration-200 hover:border-neutral-700"
+                className="bg-[#141416] border border-neutral-800 rounded-2xl overflow-hidden transition-all duration-200 hover:border-neutral-700 group"
               >
                 {/* Order row */}
                 <div
@@ -219,19 +254,30 @@ export default function History() {
                       <span className="text-xs font-bold text-[#e5b83b]">#{order.orderNumber || '---'}</span>
                     </div>
 
-                    <div className="flex flex-col gap-1">
+                    <div className="flex flex-col gap-1.5">
                       <div className="flex items-center gap-2">
                         <span className="text-[15px] font-bold text-white tracking-wide">
                           {orderItems.length > 0 ? orderItems.map(i => i.name).join(', ') : 'Empty Order'}
                         </span>
                       </div>
-                      <div className="flex items-center gap-2 text-xs text-neutral-400 font-medium">
+                      <div className="flex items-center gap-2 text-xs text-neutral-400 font-medium flex-wrap">
                         <span>{formatDate(order.createdAt)} · {formatTime(order.createdAt)}</span>
-                        <span className="text-neutral-600">•</span>
-                        <span>{order.type === 'TAKEAWAY' ? 'Takeaway' : 'Dine-in'}</span>
-                        <span className="text-neutral-600">•</span>
-                        <span className="inline-flex items-center gap-1">
-                          💵 Unpaid
+                        <span className="text-neutral-700">•</span>
+                        
+                        {/* Conditional Dine-in Table Display */}
+                        <span>
+                          {order.type?.toUpperCase() === 'TAKEAWAY' ? (
+                            'Takeaway'
+                          ) : (
+                            `Dine-in · ${order.tableName || order.tableId || 'Table --'}`
+                          )}
+                        </span>
+                        
+                        <span className="text-neutral-700">•</span>
+                        
+                        {/* Clean Text-based Payment Method Badge Container */}
+                        <span className={paymentBadge.color}>
+                          {paymentBadge.label}
                         </span>
                       </div>
                     </div>
@@ -247,6 +293,20 @@ export default function History() {
                     <span className="text-base font-bold text-white w-24 text-right">
                       Rs.{(order.total || 0).toFixed(2)}
                     </span>
+
+                    {/* Trash Delete Action Button */}
+                    <button
+                      onClick={(e) => handleDeleteOrder(e, order.id)}
+                      className="p-2 text-neutral-600 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-all duration-150 md:opacity-0 group-hover:opacity-100"
+                      title="Delete Order Record"
+                    >
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6"/>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                        <line x1="10" y1="11" x2="10" y2="17"/>
+                        <line x1="14" y1="11" x2="14" y2="17"/>
+                      </svg>
+                    </button>
 
                     {/* Expand chevron */}
                     <svg
@@ -301,7 +361,7 @@ export default function History() {
           })}
         </div>
 
-        {/* ── Pagination UI Controller Bar ──────────────────────────────────────── */}
+        {/* Pagination bar */}
         {filtered.length > 0 && (
           <div className="flex items-center justify-between border-t border-neutral-900 pt-4 mt-2">
             <div className="text-xs text-neutral-500 font-medium">
@@ -311,7 +371,6 @@ export default function History() {
             </div>
 
             <div className="flex items-center gap-1.5">
-              {/* Previous Button */}
               <button
                 disabled={currentPage === 1}
                 onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
@@ -320,7 +379,6 @@ export default function History() {
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
               </button>
 
-              {/* Dynamic Page Index Blocks */}
               {Array.from({ length: totalPages }, (_, index) => {
                 const pageNumber = index + 1;
                 return (
@@ -338,7 +396,6 @@ export default function History() {
                 );
               })}
 
-              {/* Next Button */}
               <button
                 disabled={currentPage === totalPages}
                 onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}

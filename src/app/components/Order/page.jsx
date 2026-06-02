@@ -84,51 +84,56 @@ export default function Order({tableId = null, orderType = 'TAKEAWAY', showHeade
   const tax = subtotal * 0.08;
   const total = subtotal + tax;
 
+  // Handles raw data transaction and bubbles errors cleanly back to the modal trigger
   const handlePaymentSuccess = async (paymentDetails) => {
-    try {
-      const res = await fetch('/api/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          items: cart,
-          type: orderType,
-          tableId: tableId || null,
-          staffId: null, 
-          paymentMethod: paymentDetails.paymentMethod,
-          subtotal,
-          tax: paymentDetails.grandTotal - subtotal,
-          total: paymentDetails.grandTotal,
-          status: paymentDetails.status, 
-        }),
-      });
+    const res = await fetch('/api/orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        items: cart,
+        type: orderType,
+        tableId: tableId || null,
+        staffId: null, 
+        paymentMethod: paymentDetails.paymentMethod,
+        subtotal,
+        tax: paymentDetails.grandTotal - subtotal,
+        total: paymentDetails.grandTotal,
+        status: paymentDetails.status, 
+      }),
+    });
 
-      if (res.ok) {
-        if (orderType === 'DINE_IN' && tableId) {
-          try {
-            await fetch(`/api/tables/${tableId}`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ status: 'occupied' }),
-            });
-          } catch (tableErr) {
-            console.error('Failed to auto-update table to occupied:', tableErr);
-          }
-        }
+    if (!res.ok) {
+      throw new Error('Failed to save order on remote database target');
+    }
 
-        setCart([]);
-        setShowCheckout(false);
-        
-        alert(orderType === 'DINE_IN' ? 'Order placed & table marked occupied!' : 'Order saved successfully!');
-        
-        if (typeof window !== 'undefined') {
-          window.location.reload();
-        }
-      } else {
-        alert('Failed to save order');
+    if (orderType === 'DINE_IN' && tableId) {
+      try {
+        await fetch(`/api/tables/${tableId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'occupied' }),
+        });
+      } catch (tableErr) {
+        console.error('Failed to auto-update table to occupied:', tableErr);
       }
-    } catch (err) {
-      console.error(err);
-      alert('Something went wrong');
+    }
+
+    // For DINE_IN (unpaid flows that skip the modal layout visual loop), clear and reload directly
+    if (orderType === 'DINE_IN') {
+      setCart([]);
+      setShowCheckout(false);
+      if (typeof window !== 'undefined') {
+        window.location.reload();
+      }
+    }
+  };
+
+  // This is triggered ONLY when the user clicks 'Done & Close' inside your custom success modal
+  const handleFinalizeOrder = () => {
+    setCart([]);
+    setShowCheckout(false);
+    if (typeof window !== 'undefined') {
+      window.location.reload();
     }
   };
 
@@ -283,14 +288,12 @@ export default function Order({tableId = null, orderType = 'TAKEAWAY', showHeade
             <button
               onClick={() => {
                 if (orderType === 'DINE_IN') {
-                
                   handlePaymentSuccess({
                     paymentMethod: 'Unpaid', 
                     grandTotal: total,
                     status: 'PENDING' 
                   });
                 } else {
-
                   setShowCheckout(true);
                 }
               }}
@@ -319,7 +322,7 @@ export default function Order({tableId = null, orderType = 'TAKEAWAY', showHeade
 
       <PaymentModal 
         isOpen={showCheckout} 
-        onClose={() => setShowCheckout(false)} 
+        onClose={handleFinalizeOrder}
         totalAmount={subtotal} 
         onPaymentSuccess={handlePaymentSuccess} 
       />

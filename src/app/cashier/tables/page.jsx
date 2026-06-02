@@ -5,7 +5,7 @@ import Header from '../../components/header/page';
 import { useRouter } from 'next/navigation';
 import TableModal from '../../components/TableModal';
 
-// Simplified configuration mapping exactly to your active statuses
+
 const STATUS_CONFIG = {
   available: { 
     color: '#22c55e', 
@@ -25,7 +25,7 @@ const STATUS_CONFIG = {
   },
 };
 
-// Represents the standard table/chair logo
+
 function ChairIcon({ className }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
@@ -36,7 +36,7 @@ function ChairIcon({ className }) {
   );
 }
 
-// Represents the active users/people group logo
+
 function UsersIcon({ className }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
@@ -99,7 +99,7 @@ export default function Tables() {
   const [selectedTable, setSelectedTable] = useState(null);
   const router = useRouter();
   
-  // Sync state data from local API
+
   useEffect(() => {
     fetch('/api/tables')
       .then((res) => res.json())
@@ -115,11 +115,10 @@ export default function Tables() {
       });
   }, []);
 
-  // Compute metrics from simplified active states
+
   const occupied = tables.filter(t => t.status === 'occupied').length;
   const total = tables.length;
   const occupancyPct = total > 0 ? Math.round((occupied / total) * 100) : 0;
-  const activeRevenue = tables.filter(t => t.amount).reduce((s, t) => s + (t.amount ?? 0), 0);
 
   if (loading) {
     return (
@@ -159,15 +158,15 @@ export default function Tables() {
           </button>
         </div>
 
-        {/* Dynamic Table Grid Layout with Enhanced Spaces */}
+        
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6 flex-1 content-start py-2">
           {tables.map((table) => (
             <TableCard key={table.id} table={table} onClick={() => setSelectedTable(table)} />
           ))}
         </div>
 
-        {/* Bottom Metrics Panels */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mt-auto pt-4 border-t border-neutral-900">
+
+        <div className="w-full mt-auto pt-4 border-t border-neutral-900">
           <div className="bg-[#141416] border border-neutral-900/80 rounded-2xl p-5 flex flex-col justify-between">
             <div>
               <div className="flex items-start justify-between mb-2">
@@ -181,19 +180,6 @@ export default function Tables() {
                 <div className="h-full bg-[#e5b83b] rounded-full transition-all duration-700" style={{ width: `${occupancyPct}%` }} />
               </div>
               <p className="text-[11px] text-neutral-500 font-medium mt-2">{occupied} Tables Occupied &bull; {total} Total</p>
-            </div>
-          </div>
-
-          <div className="bg-[#141416] border border-neutral-900/80 rounded-2xl p-5 flex flex-col justify-between">
-            <div className="flex items-start justify-between mb-2">
-              <span className="text-[10px] font-bold tracking-widest text-neutral-500 uppercase">Revenue (Active)</span>
-              <svg className="w-4 h-4 text-[#e5b83b]/70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-            </div>
-            <div>
-              <span className="text-3xl font-extrabold text-[#e5b83b]">Rs.{activeRevenue.toFixed(2)}</span>
-              <p className="text-[11px] text-[#22c55e] font-semibold mt-4 flex items-center gap-1">
-                <span className="inline-block w-1 h-1 rounded-full bg-[#22c55e]" /> +12% from yesterday
-              </p>
             </div>
           </div>
         </div>
