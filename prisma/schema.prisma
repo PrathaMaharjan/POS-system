@@ -1,0 +1,86 @@
+//DATASOURCE BLOCK
+datasource db {
+  provider = "postgresql"
+ 
+}
+
+// GENERATOR BLOCK
+generator client {
+  provider = "prisma-client-js"
+}
+
+// MODELS
+model Staff {
+  id        String   @id @default(uuid())
+  name      String
+  pin       String   @unique  
+  password  String            
+  role      Role     @default(CASHIER)
+  createdAt DateTime @default(now())
+  orders    Order[]
+}
+
+enum Role {
+  ADMIN
+  CASHIER
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  name        String
+  price       Float
+  category    String
+  imageUrl    String?
+  isAvailable Boolean  @default(true)
+  createdAt   DateTime @default(now())
+}
+
+model Table {
+  id          String   @id @default(uuid())
+  label       String   @unique
+  status      String   @default("available") // "available", "occupied", "bill_printed", "dirty", "waiting", "needs_service"
+  seats       Int      @default(4)
+  shape       String   @default("square")
+  amount      Float?
+  orders    Order[]
+  createdAt   DateTime @default(now())
+}
+
+model Order {
+  id          String      @id @default(uuid())
+  orderNumber Int         @default(autoincrement())
+  type        OrderType   @default(TAKEAWAY)
+  status      OrderStatus @default(PENDING)
+  subtotal    Float
+  tax         Float
+  total       Float
+  paymentMethod String?
+  staffId     String?
+  tableId     String?
+  staff       Staff?      @relation(fields: [staffId], references: [id])
+  table       Table?      @relation(fields: [tableId], references: [id])
+  items       OrderItem[]
+  createdAt   DateTime    @default(now())
+}
+
+model OrderItem {
+  id        String  @id @default(uuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  name      String
+  price     Float
+  quantity  Int
+  subtotal  Float
+}
+
+enum OrderType {
+  TAKEAWAY
+  DINE_IN
+}
+
+enum OrderStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
