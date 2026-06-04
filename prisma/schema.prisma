@@ -1,7 +1,7 @@
-//DATASOURCE BLOCK
+// DATASOURCE BLOCK
 datasource db {
   provider = "postgresql"
- 
+
 }
 
 // GENERATOR BLOCK
@@ -9,69 +9,10 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// MODELS
-model Staff {
-  id        String   @id @default(uuid())
-  name      String
-  pin       String   @unique  
-  password  String            
-  role      Role     @default(CASHIER)
-  createdAt DateTime @default(now())
-  orders    Order[]
-}
-
 enum Role {
+  SUPER_ADMIN
   ADMIN
   CASHIER
-}
-
-model Product {
-  id          String   @id @default(uuid())
-  name        String
-  price       Float
-  category    String
-  imageUrl    String?
-  isAvailable Boolean  @default(true)
-  createdAt   DateTime @default(now())
-}
-
-model Table {
-  id          String   @id @default(uuid())
-  label       String   @unique
-  status      String   @default("available") // "available", "occupied", "bill_printed", "dirty", "waiting", "needs_service"
-  seats       Int      @default(4)
-  shape       String   @default("square")
-  amount      Float?
-  orders    Order[]
-  createdAt   DateTime @default(now())
-}
-
-model Order {
-  id          String      @id @default(uuid())
-  orderNumber Int         @default(autoincrement())
-  type        OrderType   @default(TAKEAWAY)
-  status      OrderStatus @default(PENDING)
-  subtotal    Float
-  tax         Float
-  total       Float
-  paymentMethod String?
-  staffId     String?
-  tableId     String?
-  staff       Staff?      @relation(fields: [staffId], references: [id])
-  table       Table?      @relation(fields: [tableId], references: [id])
-  items       OrderItem[]
-  createdAt   DateTime    @default(now())
-}
-
-model OrderItem {
-  id        String  @id @default(uuid())
-  orderId   String
-  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  productId String
-  name      String
-  price     Float
-  quantity  Int
-  subtotal  Float
 }
 
 enum OrderType {
@@ -83,4 +24,107 @@ enum OrderStatus {
   PENDING
   COMPLETED
   CANCELLED
+}
+
+// 1. NEW MODEL: Grouping your entire operation by Outlet/Branch
+model Outlet {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  location  String
+  status    String   @default("active")  
+  seats     Int?                       
+  phone     String?                     
+  manager   String?                     
+  createdAt DateTime @default(now())
+  
+  staff     Staff[]
+  products  Product[]
+  tables    Table[]
+  orders    Order[]
+}
+
+model Staff {
+  id        String   @id @default(uuid())
+  name      String
+  pin       String   @unique  
+  password  String            
+  role      Role     @default(CASHIER)
+  createdAt DateTime @default(now())
+  
+  // Scoping relation to an Outlet
+  outletId  String?
+  outlet    Outlet?  @relation(fields: [outletId], references: [id], onDelete: SetNull)
+  orders    Order[]
+}
+
+model Product {
+  id          String      @id @default(uuid())
+  name        String
+  price       Float
+  category    String
+  imageUrl    String?
+  isAvailable Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  
+  // Scoping relation to an Outlet
+  outletId    String?
+  outlet      Outlet?     @relation(fields: [outletId], references: [id], onDelete: Cascade)
+  orderItems  OrderItem[]
+}
+
+model Table {
+  id        String   @id @default(uuid())
+  label     String   
+  status    String   @default("available") // "available", "occupied", "bill_printed", "dirty", etc.
+  seats     Int      @default(4)
+  shape     String   @default("square")
+  amount    Float?
+  createdAt DateTime @default(now())
+  
+  // Scoping relation to an Outlet
+  outletId  String
+  outlet    Outlet   @relation(fields: [outletId], references: [id], onDelete: Cascade)
+  orders    Order[]
+
+  @@unique([outletId, label]) // Ensures labels are only unique INSIDE the same branch
+}
+
+model Order {
+  id            String      @id @default(uuid())
+  orderNumber   Int         @default(autoincrement())
+  type          OrderType   @default(TAKEAWAY)
+  status        OrderStatus @default(PENDING)
+  subtotal      Float
+  tax           Float
+  total         Float
+  paymentMethod String?
+  
+  // Added to feed your "Estimated Customers Served" metric card
+  customerCount Int         @default(1) 
+
+  // Core tracking scopes
+  outletId      String
+  outlet        Outlet      @relation(fields: [outletId], references: [id], onDelete: Cascade)
+  staffId       String?
+  staff         Staff?      @relation(fields: [staffId], references: [id], onDelete: SetNull)
+  tableId       String?
+  table         Table?      @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  
+  items         OrderItem[]
+  createdAt     DateTime    @default(now())
+}
+
+model OrderItem {
+  id        String   @id @default(uuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  
+  // Linked product directly to track Database Menu Popularity effectively
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  
+  name      String
+  price     Float
+  quantity  Int
+  subtotal  Float
 }

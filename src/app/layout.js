@@ -19,7 +19,7 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html
-      lang="en"
+      lang="en suppressHydrationWarning"
       className={`${geistSans.variable} ${geistMono.variable} h-full bg-[#0f0f10] text-[#e4e4e7] antialiased`}
     >
       <body className="h-full flex flex-col m-0 p-0 overflow-x-hidden">

@@ -2,13 +2,13 @@
 
 import React, { useState, useRef } from 'react';
 
-export default function PaymentModal({ isOpen, onClose, totalAmount, onPaymentSuccess }) {
+// Change the function signature
+export default function PaymentModal({ isOpen, onClose, totalAmount, cart = [], onPaymentSuccess, orderType = 'TAKEAWAY', tableId = null }) {
   const [paymentMethod, setPaymentMethod] = useState('Cash');
   const [cashReceived, setCashReceived] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false); // Manages successful view swap
+  const [isSuccess, setIsSuccess] = useState(false);
 
-  // Anchor target pointer for capturing the thermal print template node
   const receiptRef = useRef(null);
 
   if (!isOpen) return null;
@@ -19,6 +19,13 @@ export default function PaymentModal({ isOpen, onClose, totalAmount, onPaymentSu
   const handleConfirm = async () => {
     setIsSubmitting(true);
     try {
+      console.log("Attempting payload submission with data:", {
+        paymentMethod,
+        cashReceived: paymentMethod === 'Cash' ? parseFloat(cashReceived) : grandTotal,
+        grandTotal,
+        status: 'COMPLETED'
+      });
+
       await onPaymentSuccess({
         paymentMethod,
         cashReceived: paymentMethod === 'Cash' ? parseFloat(cashReceived) : grandTotal,
@@ -26,17 +33,18 @@ export default function PaymentModal({ isOpen, onClose, totalAmount, onPaymentSu
         status: 'COMPLETED' 
       });
       
-      // Shift UI state to success view instead of raw closing
+      console.log("onPaymentSuccess resolved successfully! Shifting UI view.");
       setIsSuccess(true);
+
     } catch (err) {
-      console.error("Payment handler error:", err);
+      console.error("CRITICAL BREAKDOWN INSIDE onPaymentSuccess:", err);
+      alert(`Payment failed to register: ${err.message || err}`);
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleCloseModal = () => {
-    // Reset all internal layout states before closing
     setCashReceived('');
     setPaymentMethod('Cash');
     setIsSuccess(false);
@@ -48,6 +56,11 @@ export default function PaymentModal({ isOpen, onClose, totalAmount, onPaymentSu
       const html2pdf = (await import('html2pdf.js')).default;
       const element = receiptRef.current;
 
+      if (!element) {
+        console.error("Receipt element DOM reference is missing!");
+        return;
+      }
+
       const opt = {
         margin:       [0.15, 0.2, 0.15, 0.2], 
         filename:     `POS_Bill_${Date.now()}.pdf`,
@@ -56,15 +69,12 @@ export default function PaymentModal({ isOpen, onClose, totalAmount, onPaymentSu
           scale: 2, 
           logging: false, 
           useCORS: true,
-          // ⚠️ FIX: Forces rendering inside an isolated container to strip away unsupported lab() stylesheet colors
           container: document.body 
         }, 
-        jsPDF:        { unit: 'in', format: [3.15, 5.5], orientation: 'portrait' } 
+        jsPDF:        { unit: 'in', format: [3.15, 7.5], orientation: 'portrait' } 
       };
 
-      // Directly call save on the worker pipeline
       await html2pdf().set(opt).from(element).save();
-
     } catch (error) {
       console.error("Error executing client-side canvas snapshot layout capture:", error);
     }
@@ -75,8 +85,8 @@ export default function PaymentModal({ isOpen, onClose, totalAmount, onPaymentSu
       <div className="bg-[#141416] border border-neutral-800 rounded-2xl p-8 w-full max-w-md flex flex-col gap-6 relative overflow-hidden">
 
         {isSuccess ? (
+          /* ── SUCCESS VIEW ─────────────────────────── */
           <div className="flex flex-col items-center justify-center text-center py-4 gap-6 animate-fadeIn">
-            {/* Success Animation Ring & Icon */}
             <div className="w-16 h-16 rounded-full bg-[#22c55e]/10 border border-[#22c55e]/30 flex items-center justify-center text-[#22c55e]">
               <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="20 6 9 17 4 12" />
@@ -90,13 +100,11 @@ export default function PaymentModal({ isOpen, onClose, totalAmount, onPaymentSu
               </p>
             </div>
 
-            {/* Receipt Summary Snippet */}
             <div className="w-full bg-[#0c0c0d] rounded-xl p-4 border border-neutral-900 flex justify-between items-center text-sm">
               <span className="text-neutral-400">Total Settled</span>
               <span className="text-white font-bold text-base">Rs.{grandTotal.toFixed(2)}</span>
             </div>
 
-            {/* Flow CTA Buttons */}
             <div className="w-full flex flex-col gap-2 mt-2">
               <button
                 onClick={handlePrintBill}
@@ -117,70 +125,10 @@ export default function PaymentModal({ isOpen, onClose, totalAmount, onPaymentSu
                 Done & Close
               </button>
             </div>
-
-            {/* ── HIDDEN PRINT ASSET SLIP VIEW USING SAFE INLINE STRUCTURES ── */}
-            <div style={{ position: 'absolute', left: '-9999px', top: '-9999px', pointerEvents: 'none', userSelect: 'none' }}>
-              <div 
-                ref={receiptRef}
-                style={{
-                  width: '260px',
-                  backgroundColor: '#ffffff',
-                  color: '#000000',
-                  padding: '16px 12px',
-                  fontFamily: 'monospace',
-                  fontSize: '11px',
-                  lineHeight: '1.4'
-                }}
-              >
-                <div style={{ textAlign: 'center', marginBottom: '12px' }}>
-                  <h2 style={{ fontSize: '14px', fontWeight: 'bold', margin: '0 0 4px 0', textTransform: 'uppercase', color: '#000000' }}>RESTAURANT RECEIPT</h2>
-                  <p style={{ fontSize: '10px', color: '#4b5563', margin: '0' }}>Kathmandu, Nepal</p>
-                  <p style={{ fontSize: '10px', color: '#4b5563', margin: '0' }}>Tel: +977-1-4XXXXXX</p>
-                  <p style={{ margin: '6px 0', color: '#000000' }}>---------------------------------------</p>
-                </div>
-
-                <div style={{ margin: '8px 0', color: '#000000' }}>
-                  <p style={{ margin: '3px 0' }}><strong>Date:</strong> {new Date().toLocaleDateString()}</p>
-                  <p style={{ margin: '3px 0' }}><strong>Time:</strong> {new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
-                  <p style={{ margin: '3px 0' }}><strong>Type:</strong> TAKEAWAY</p>
-                </div>
-
-                <p style={{ margin: '6px 0', color: '#000000' }}>---------------------------------------</p>
-                
-                <div style={{ margin: '12px 0', color: '#000000' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <strong>Subtotal:</strong>
-                    <span>Rs.{totalAmount.toFixed(2)}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#374151', marginBottom: '4px' }}>
-                    <span>Tax (8%):</span>
-                    <span>Rs.{tax.toFixed(2)}</span>
-                  </div>
-                  <p style={{ margin: '8px 0' }}>---------------------------------------</p>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 'bold', paddingTop: '4px' }}>
-                    <span>TOTAL BILL:</span>
-                    <span>Rs.{grandTotal.toFixed(2)}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#4b5563', marginTop: '4px' }}>
-                    <span>Paid Via:</span>
-                    <span>{paymentMethod}</span>
-                  </div>
-                </div>
-
-                <p style={{ margin: '6px 0', color: '#000000' }}>---------------------------------------</p>
-
-                <div style={{ marginTop: '20px', textAlign: 'center', color: '#000000' }}>
-                  <p style={{ fontWeight: 'bold', fontSize: '10px', margin: '0', trackingWide: '0.05em', textTransform: 'uppercase' }}>Thank You For Dining With Us!</p>
-                  <p style={{ fontSize: '8px', color: '#9ca3af', margin: '4px 0 0 0' }}>DELIGHTS</p>
-                </div>
-              </div>
-            </div>
-
           </div>
         ) : (
           /* ── ACTIVE PAYMENT SETTLEMENT VIEW ─────────────────────────── */
           <>
-            {/* Header */}
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-bold text-white">Payment Settle</h2>
               <button onClick={handleCloseModal} className="text-neutral-500 hover:text-white transition-colors p-1">
@@ -190,7 +138,6 @@ export default function PaymentModal({ isOpen, onClose, totalAmount, onPaymentSu
               </button>
             </div>
 
-            {/* Breakdown Summary */}
             <div className="bg-[#0c0c0d] rounded-xl p-4 space-y-2">
               <div className="flex justify-between text-sm text-neutral-400">
                 <span>Subtotal</span>
@@ -206,45 +153,13 @@ export default function PaymentModal({ isOpen, onClose, totalAmount, onPaymentSu
               </div>
             </div>
 
-            {/* Method Toggles */}
             <div className="flex flex-col gap-2">
               <label className="text-xs font-semibold text-neutral-400 uppercase tracking-widest">Payment Method</label>
               <div className="grid grid-cols-3 gap-3">
                 {[
-                  { 
-                    id: 'Cash', 
-                    label: 'Cash', 
-                    icon: (
-                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <rect x="2" y="6" width="20" height="12" rx="2" />
-                        <circle cx="12" cy="12" r="2" />
-                        <line x1="6" y1="12" x2="6.01" y2="12" />
-                        <line x1="18" y1="12" x2="18.01" y2="12" />
-                      </svg>
-                    )
-                  },
-                  { 
-                    id: 'Card', 
-                    label: 'Card', 
-                    icon: (
-                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
-                        <line x1="1" y1="10" x2="23" y2="10" />
-                      </svg>
-                    )
-                  },
-                  { 
-                    id: 'QR', 
-                    label: 'QR', 
-                    icon: (
-                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <rect x="2" y="2" width="6" height="6" rx="1" />
-                        <rect x="16" y="2" width="6" height="6" rx="1" />
-                        <rect x="2" y="16" width="6" height="6" rx="1" />
-                        <path d="M16 16h2v2h-2zM20 20h2v2h-2zM16 20h2v2h-2zM20 16h2v2h-2z" />
-                      </svg>
-                    )
-                  },
+                  { id: 'Cash', label: 'Cash', icon: <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="6" width="20" height="12" rx="2" /><circle cx="12" cy="12" r="2" /></svg> },
+                  { id: 'Card', label: 'Card', icon: <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2" /><line x1="1" y1="10" x2="23" y2="10" /></svg> },
+                  { id: 'QR', label: 'QR', icon: <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="2" width="6" height="6" rx="1" /><rect x="16" y="2" width="6" height="6" rx="1" /><rect x="2" y="16" width="6" height="6" rx="1" /></svg> },
                 ].map(method => {
                   const isSelected = paymentMethod === method.id;
                   return (
@@ -286,7 +201,6 @@ export default function PaymentModal({ isOpen, onClose, totalAmount, onPaymentSu
               </div>
             )}
 
-            {/* Action Button */}
             <button
               onClick={handleConfirm}
               disabled={isSubmitting || (paymentMethod === 'Cash' && (!cashReceived || parseFloat(cashReceived) < grandTotal))}
@@ -297,6 +211,78 @@ export default function PaymentModal({ isOpen, onClose, totalAmount, onPaymentSu
           </>
         )}
 
+      </div>
+
+      {/* Hidden Receipt Area */}
+      <div style={{ position: 'absolute', left: '-9999px', top: '-9999px', pointerEvents: 'none', userSelect: 'none' }}>
+        <div 
+          ref={receiptRef}
+          style={{
+            width: '260px',
+            backgroundColor: '#ffffff',
+            color: '#000000',
+            padding: '16px 12px',
+            fontFamily: 'monospace',
+            fontSize: '11px',
+            lineHeight: '1.4'
+          }}
+        >
+          <div style={{ textAlign: 'center', marginBottom: '12px' }}>
+            <h2 style={{ fontSize: '14px', fontWeight: 'bold', margin: '0 0 4px 0', textTransform: 'uppercase', color: '#000000' }}>RESTAURANT RECEIPT</h2>
+            <p style={{ fontSize: '10px', color: '#4b5563', margin: '0' }}>Kathmandu, Nepal</p>
+            <p style={{ margin: '6px 0', color: '#000000' }}>---------------------------------------</p>
+          </div>
+
+          <div style={{ margin: '8px 0', color: '#000000' }}>
+            <p style={{ margin: '3px 0' }}><strong>Date:</strong> {new Date().toLocaleDateString()}</p>
+            <p style={{ margin: '3px 0' }}><strong>Time:</strong> {new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
+<p style={{ margin: '3px 0' }}><strong>Type:</strong> {orderType === 'DINE_IN' ? `DINE IN${tableId ? ` — Table ${tableId}` : ''}` : 'TAKEAWAY'}</p>
+          </div>
+
+          <p style={{ margin: '6px 0', color: '#000000' }}>--- ITEMS ---------------------</p>
+          
+          {/* Active Items breakdown mapper added */}
+          <div style={{ margin: '8px 0', color: '#000000' }}>
+            {cart.map((item, idx) => {
+             const price = ((item.product?.price ?? item.price ?? 0) + (item.extraCost || 0)) * item.quantity;
+              return (
+                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span>{item.quantity}x {item.product?.name || item.name || 'Item'}</span>
+                  <span>Rs.{price.toFixed(2)}</span>
+                </div>
+              );
+            })}
+          </div>
+
+          <p style={{ margin: '6px 0', color: '#000000' }}>---------------------------------------</p>
+          
+          <div style={{ margin: '12px 0', color: '#000000' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+              <strong>Subtotal:</strong>
+              <span>Rs.{totalAmount.toFixed(2)}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#374151', marginBottom: '4px' }}>
+              <span>Tax (8%):</span>
+              <span>Rs.{tax.toFixed(2)}</span>
+            </div>
+            <p style={{ margin: '8px 0' }}>---------------------------------------</p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 'bold', paddingTop: '4px' }}>
+              <span>TOTAL BILL:</span>
+              <span>Rs.{grandTotal.toFixed(2)}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#4b5563', marginTop: '4px' }}>
+              <span>Paid Via:</span>
+              <span>{paymentMethod}</span>
+            </div>
+          </div>
+
+          <p style={{ margin: '6px 0', color: '#000000' }}>---------------------------------------</p>
+
+          <div style={{ marginTop: '20px', textAlign: 'center', color: '#000000' }}>
+            <p style={{ fontWeight: 'bold', fontSize: '10px', margin: '0', textTransform: 'uppercase' }}>Thank You For Dining With Us!</p>
+            <p style={{ fontSize: '8px', color: '#9ca3af', margin: '4px 0 0 0' }}>DELIGHTS</p>
+          </div>
+        </div>
       </div>
     </div>
   );

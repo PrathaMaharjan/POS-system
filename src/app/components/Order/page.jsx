@@ -2,10 +2,9 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-
 import PaymentModal from '../PaymentModal';
 
-export default function Order({tableId = null, orderType = 'TAKEAWAY', showHeader = true}) {
+export default function Order({ tableId = null, orderType = 'TAKEAWAY', showHeader = true, onOrderCreated }) {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [activeCategory, setActiveCategory] = useState('');
@@ -84,42 +83,87 @@ export default function Order({tableId = null, orderType = 'TAKEAWAY', showHeade
   const tax = subtotal * 0.08;
   const total = subtotal + tax;
 
-  // Handles raw data transaction and bubbles errors cleanly back to the modal trigger
-  const handlePaymentSuccess = async (paymentDetails) => {
-    const res = await fetch('/api/orders', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        items: cart,
-        type: orderType,
-        tableId: tableId || null,
-        staffId: null, 
-        paymentMethod: paymentDetails.paymentMethod,
-        subtotal,
-        tax: paymentDetails.grandTotal - subtotal,
-        total: paymentDetails.grandTotal,
-        status: paymentDetails.status, 
-      }),
-    });
 
-    if (!res.ok) {
-      throw new Error('Failed to save order on remote database target');
+
+const handlePaymentSuccess = async (paymentDetails) => {
+  const res = await fetch('/api/orders', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      items: cart,
+      type: orderType,
+      tableId: tableId || null,
+      staffId: null,
+      paymentMethod: paymentDetails.paymentMethod,
+      subtotal,
+      tax: paymentDetails.grandTotal - subtotal,
+      total: paymentDetails.grandTotal,
+      status: paymentDetails.status,
+    }),
+  });
+
+  if (!res.ok) {
+    throw new Error('Failed to save order on remote database target');
+  }
+
+
+  if (orderType === 'DINE_IN' && tableId) {
+    try {
+      await fetch(`/api/tables/${tableId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'occupied' }),
+      });
+    } catch (tableErr) {
+      console.error('Failed to update table status after paid checkout:', tableErr);
     }
+  }
 
-    if (orderType === 'DINE_IN' && tableId) {
-      try {
+  return { keepOpen: true };
+};
+
+  const handlePlaceDineInOrder = async () => {
+    try {
+      const res = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: cart,
+          type: orderType,
+          tableId: tableId || null,
+          staffId: null, 
+          paymentMethod: 'Unpaid',
+          subtotal,
+          tax,
+          total,
+          status: 'PENDING', 
+        }),
+      });
+
+      if (!res.ok) throw new Error('Failed to save pending order');
+
+      if (tableId) {
         await fetch(`/api/tables/${tableId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: 'occupied' }),
         });
-      } catch (tableErr) {
-        console.error('Failed to auto-update table to occupied:', tableErr);
       }
-    }
+      
 
-    // For DINE_IN (unpaid flows that skip the modal layout visual loop), clear and reload directly
-    if (orderType === 'DINE_IN') {
+setCart([]);
+if (onOrderCreated) {
+  onOrderCreated(); 
+}
+    } catch (error) {
+      console.error("Failed to place dine-in order:", error);
+    }
+  };
+
+
+  const handleFinalizeOrder = () => {
+
+    if (showCheckout) {
       setCart([]);
       setShowCheckout(false);
       if (typeof window !== 'undefined') {
@@ -128,22 +172,12 @@ export default function Order({tableId = null, orderType = 'TAKEAWAY', showHeade
     }
   };
 
-  // This is triggered ONLY when the user clicks 'Done & Close' inside your custom success modal
-  const handleFinalizeOrder = () => {
-    setCart([]);
-    setShowCheckout(false);
-    if (typeof window !== 'undefined') {
-      window.location.reload();
-    }
-  };
-
   return (
     <div className="h-full bg-[#0c0c0d] text-[#e4e4e7] flex flex-col font-sans select-none antialiased">
       <div className="flex-1 flex overflow-hidden">
 
-        {/* Menu */}
+        {/* Menu Grid */}
         <main className="flex-1 px-10 py-6 flex flex-col gap-4 overflow-hidden">
-          {/* Search bar */}
           <div className="flex items-center justify-between gap-3">
             <div className="relative flex-1">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-500">
@@ -168,7 +202,6 @@ export default function Order({tableId = null, orderType = 'TAKEAWAY', showHeade
             </button>
           </div>
 
-          {/* Category tabs */}
           <div className="flex gap-2 overflow-x-auto pb-1">
             {categories.map(category => (
               <button
@@ -185,7 +218,6 @@ export default function Order({tableId = null, orderType = 'TAKEAWAY', showHeade
             ))}
           </div>
 
-          {/* Product grid */}
           <div className="flex-1 overflow-y-auto">
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 pt-1 pb-4">
               {filteredProducts.map(product => {
@@ -226,7 +258,7 @@ export default function Order({tableId = null, orderType = 'TAKEAWAY', showHeade
           </div>
         </main>
 
-        {/* RIGHT: Cart Sidebar */}
+        {/* Sidebar Cart */}
         <aside className="w-[300px] xl:w-[340px] border-l border-neutral-900 bg-[#0c0c0d] p-5 flex flex-col gap-4 overflow-hidden shrink-0">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-bold text-white tracking-wide">Active Order</h2>
@@ -237,7 +269,6 @@ export default function Order({tableId = null, orderType = 'TAKEAWAY', showHeade
             )}
           </div>
 
-          {/* Cart items */}
           <div className="flex-1 flex flex-col gap-2 overflow-y-auto min-h-0">
             {cart.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center text-neutral-600 gap-2">
@@ -268,7 +299,6 @@ export default function Order({tableId = null, orderType = 'TAKEAWAY', showHeade
             )}
           </div>
 
-          {/* Pricing Totals & Conditional Trigger */}
           <div className="border-t border-neutral-900 pt-4 flex flex-col gap-3">
             <div className="space-y-1.5">
               <div className="flex justify-between text-sm">
@@ -288,13 +318,9 @@ export default function Order({tableId = null, orderType = 'TAKEAWAY', showHeade
             <button
               onClick={() => {
                 if (orderType === 'DINE_IN') {
-                  handlePaymentSuccess({
-                    paymentMethod: 'Unpaid', 
-                    grandTotal: total,
-                    status: 'PENDING' 
-                  });
+                  handlePlaceDineInOrder(); 
                 } else {
-                  setShowCheckout(true);
+                  setShowCheckout(true); 
                 }
               }}
               disabled={cart.length === 0}
@@ -320,12 +346,16 @@ export default function Order({tableId = null, orderType = 'TAKEAWAY', showHeade
         </aside>
       </div>
 
-      <PaymentModal 
-        isOpen={showCheckout} 
-        onClose={handleFinalizeOrder}
-        totalAmount={subtotal} 
-        onPaymentSuccess={handlePaymentSuccess} 
-      />
+
+<PaymentModal
+  isOpen={showCheckout}
+  onClose={handleFinalizeOrder}
+  totalAmount={subtotal}
+  cart={cart}
+  orderType={orderType}  
+  tableId={tableId}            
+  onPaymentSuccess={handlePaymentSuccess}
+/>
     </div>
   );
 }

@@ -28,12 +28,14 @@ export default function Login() {
       const data = await res.json();
 
       if (data.success) {
-        if (data.role === 'ADMIN') {
-          router.push('/admin');
-        } else {
-          router.push('/cashier');
-        }
-      } else {
+  if (data.role === 'SUPER_ADMIN') {
+    router.push('/superadmin');
+  } else if (data.role === 'ADMIN') {
+    router.push('/admin');
+  } else {
+    router.push('/cashier');
+  }
+} else {
         setError(data.message || 'Invalid credentials');
       }
     } catch (err) {

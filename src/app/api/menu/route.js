@@ -5,8 +5,14 @@ export async function GET() {
     where: { isAvailable: true },
     orderBy: { name: 'asc' },
   });
-
   const categories = [...new Set(products.map(p => p.category))];
-
   return Response.json({ items: products, categories });
+}
+
+export async function POST(req) {
+  const { name, category, price, imageUrl } = await req.json();
+  const product = await prisma.product.create({
+    data: { name, category, price: parseFloat(price), imageUrl, isAvailable: true },
+  });
+  return Response.json(product);
 }

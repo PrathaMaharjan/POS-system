@@ -17,7 +17,7 @@ export default function TableModal({ table, onClose }) {
   const [orders, setOrders] = useState([]);
   const [historyOrders, setHistoryOrders] = useState([]);
   
-  // Controls the payment window context for settling the bill
+
   const [showPaymentModal, setShowPaymentModal] = useState(false);
 
   useEffect(() => {
@@ -50,45 +50,50 @@ export default function TableModal({ table, onClose }) {
     }
   }
 
-  // Calculates the current subtotal for all combined pending orders on this specific table
+ 
   const totalTableBalance = useMemo(() => {
     return orders.reduce((sum, order) => sum + (order.subtotal || 0), 0);
   }, [orders]);
 
-  // Invoked when the PaymentModal successfully executes
-  const handleTableSettlement = async (paymentDetails) => {
-    try {
-      // 1. Process and settle all pending orders for this table
-      const updatePromises = orders.map(order => 
-        fetch(`/api/orders/${order.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            status: 'COMPLETED',
-            paymentMethod: paymentDetails.paymentMethod 
-          })
-        })
-      );
-      
-      await Promise.all(updatePromises);
 
-      // 2. Clear table state by changing status back to available
-      const tableRes = await fetch(`/api/tables/${table.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'available' }),
-      });
 
-      if (!tableRes.ok) throw new Error('Failed to free table status');
+const handleTableSettlement = async (paymentDetails) => {
 
-      setShowPaymentModal(false);
-      onClose(); // Close out modal window
-      window.location.reload(); // Refresh viewport to sync table canvas layout
-    } catch (err) {
-      console.error("Settlement transaction failure:", err);
-      alert("An error occurred during order settlement processing.");
-    }
-  };
+  const updatePromises = orders.map(order =>
+    fetch(`/api/orders/${order.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        status: 'COMPLETED',
+        paymentMethod: paymentDetails.paymentMethod,
+      }),
+    })
+  );
+
+  const results = await Promise.all(updatePromises);
+  const anyFailed = results.some(r => !r.ok);
+  if (anyFailed) throw new Error('Failed to update one or more orders');
+
+
+ const tableRes = await fetch(`/api/tables/${table.id}`, {
+  method: 'PATCH',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ status: 'available' }),
+});
+
+console.log('Table PATCH status:', tableRes.status);
+
+if (!tableRes.ok) throw new Error('Failed to free table status');
+
+
+  return { keepOpen: true };
+};
+
+const handleSettlementDone = () => {
+  setShowPaymentModal(false);
+  onClose();
+  window.location.reload();
+};
 
   async function updateTableStatus(status) {
     try {
@@ -254,13 +259,16 @@ export default function TableModal({ table, onClose }) {
         </div>
       </div>
 
-      {/* Shared Payment Instance */}
-      <PaymentModal 
-        isOpen={showPaymentModal}
-        onClose={() => setShowPaymentModal(false)}
-        totalAmount={totalTableBalance}
-        onPaymentSuccess={handleTableSettlement}
-      />
+
+
+<PaymentModal
+  isOpen={showPaymentModal}
+  onClose={handleSettlementDone}   
+  totalAmount={totalTableBalance}
+  cart={orders.flatMap(o => o.items)}  
+  orderType="DINE_IN"
+  onPaymentSuccess={handleTableSettlement}
+/>
 
     </div>
   );
